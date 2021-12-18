@@ -771,7 +771,7 @@ impl CPU{
     }
 
     pub fn x8_rla(&mut self) -> u8 {
-        let carry = self.reg.a & 0b1000000 != 0;
+        let carry = self.reg.a & 0b10000000 != 0;
 
         let mut result = self.reg.a << 1;
 
@@ -798,7 +798,7 @@ impl CPU{
     }
 
     pub fn x8_rlca(&mut self) -> u8 {
-        let carry = self.reg.a & 0b1000000 != 0;
+        let carry = self.reg.a & 0b10000000 != 0;
         let result = self.reg.a.rotate_left(1);
 
         self.reg.set_c(carry);
@@ -811,7 +811,7 @@ impl CPU{
 
 
     pub fn x8_rr(&mut self, value: u8) -> u8 {
-        let carry = value & 0b0000001 != 0;
+        let carry = value & 0b0000001 == 0;
 
         let mut result = value >> 1;
 
@@ -826,7 +826,7 @@ impl CPU{
     }
 
     pub fn x8_rl(&mut self, value: u8) -> u8 {
-        let carry = value & 0b1000000 != 0;
+        let carry = value & 0b10000000 != 0;
 
         let mut result = value << 1;
 
@@ -841,7 +841,7 @@ impl CPU{
     }
 
     pub fn x8_rrc(&mut self, value: u8) -> u8 {
-        let carry = value & 0b0000001 != 0;
+        let carry = value & 0b0000001 == 0;
         let result = value.rotate_right(1);
 
         self.reg.set_c(carry);
@@ -853,7 +853,7 @@ impl CPU{
     }
 
     pub fn x8_rlc(&mut self, value: u8) -> u8 {
-        let carry = value & 0b1000000 != 0;
+        let carry = value & 0b10000000 != 0;
         let result = value.rotate_left(1);
 
         self.reg.set_c(carry);
@@ -1006,7 +1006,7 @@ impl MMU {
         }
     }
 
-    pub fn read(&mut self, addr: u16) -> u8 {
+    pub fn read(&self, addr: u16) -> u8 {
         match addr {
             0x0000..=0x3FFF => self.ROM0[addr as usize],
             0x4000..=0x7FFF => self.ROM1[(addr - 0x4000) as usize],
@@ -1063,20 +1063,43 @@ impl GPU {
         }
     }
 
-    pub fn draw_line(&mut self, mmu: &mut MMU) {
+    pub fn get_tile_pixel(&mut self, mmu: &MMU, tile: u8, x: u16, y: u16) -> bool {
+        let addr = 0x8000 + (tile as u16) * 16 + y * 2;
+
+        let plane1 = mmu.read(addr);
+        let plane2 = mmu.read(addr + 1);
+
+        let mask = 1 << (7 - x);
+
+        if mask & plane1 != 0 || mask & plane2 != 0 {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    pub fn draw_line(&mut self, mmu: &MMU) {
         let scy = mmu.read(0xFF42);
         for x in 0..256 {
             let tile_x = x / 8;
             let tile_y = self.ly / 8;
 
             let tile = mmu.read(0x9800 + tile_x as u16 + tile_y as u16 * 32);
+
+            let mut pixel = 0xFFFFFFFFu32;
             
             if tile != 0 {
                 //println!("tile_x {}, tile_y {}, tile {}, tile_addr {:04X}", tile_x, tile_y, tile, 0x9800 + tile_x as u16 + tile_y as u16 * 32);
-                self.image[x + ((self.ly - scy) % 255) as usize * 256] = 0xFF000000u32; //rgba
-            } else {
-                self.image[x + ((self.ly - scy) % 255) as usize * 256] = 0xFFFFFFFFu32; //rgba
+                let color = self.get_tile_pixel(mmu, tile, x % 8, (self.ly as u16) % 8);
+                if (color) {
+                    pixel = 0xFF000000u32; //rgba
+                }
+            
+
+                
             }
+
+            self.image[x as usize + ((self.ly - scy) as usize % 256) as usize * 256] = pixel;
         }
     }
 }
